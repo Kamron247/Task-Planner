@@ -1,0 +1,9 @@
+♥1/1
+♦day of the week
+♣reminder
+♠task name♠description♠10
+
+start parsing, if the first character is ♥ then read day and month
+if first character is ♦ then the line is the day of the week
+if first character is ♣ then the line has a reminder which is pushed onto the reminders vector
+if first character is ♠ then text between first and second ♠ is the name, between second and third ♠ is the description, after third ♠ is the 1-10 importance
