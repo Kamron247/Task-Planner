@@ -1,14 +1,31 @@
 // Programmers: Kamron Gonzales, Ziv Fuchs, Hayoun Lim, Brooke Morris, Ty Hewitt
-// Programmers� IDs: 1564995, 1796140, 1533059, 1504892, 1779597
+// Programmers’ IDs: 1564995, 1796140, 1533059, 1504892, 1779597
+
+#define _CRT_SECURE_NO_WARNINGS
 
 #include <iostream>
+#include <iomanip>
 #include <string>
+#include <fstream>
+#include <sstream>
+#include <map>
+#include <vector>
 using namespace std;
 
 #include "StaticArray.h"
 #include "PriorityQueue.h"
 
-string calculateDay(int month, int date);
+const string DAYOFWEEK[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+const string MONTHS[] = { "January", "February", "March", "April", "May", "June", "July", "August",
+		"September", "October", "November", "December"
+};
+
+template<typename T>
+void TitleCard(T);
+int DaysInMonth(int, int);
+int CalculateDay(int, int, int);
+string MonthSelect();
+string SelectDay(int, int, int);
 
 struct task
 {
@@ -24,128 +41,169 @@ struct task
 
 struct day
 {
-	// store date as "month/day" (November 12 = 11/12)
 	int month;
 	int date;
-	// store priorityQueue of tasks with capacity 10
-	PriorityQueue<task> tasks{ (10) }; // I believe the brackets are necessary because the declaration is ambiguous, without them it tasks could be a 
-									   // function which returns a PriorityQueue of task objects.
-	// store priorityQueue of reminders with capacity 3
-	PriorityQueue<string> reminders{ (3) };
-	// calculate day of the week and store day of the week. calculation can be done in default constructor?
-	string dayOfTheWeek = calculateDay(month, date);
+	
+
 };
 
 int main()
 {
 	cout << "Programmers: Kamron Gonzales, Ziv Fuchs, Hayoun Lim, Brooke Morris, Ty Hewitt\n";
-	cout << "Programmers� IDs: 1564995, 1796140, 1533059, 1504892, 1779597\n";
-	cout << "File: " << __FILE__ << endl;
+	cout << "Programmers’ IDs: 1564995, 1796140, 1533059, 1504892, 1779597\n";
+	cout << "File: " << __FILE__ << endl;	
 
-	StaticArray<StaticArray<day, 31>, 12> year_2021;
-	year_2021[1][1].tasks.push({ "Mow the lawn", "Mow the lawn", 10 });
-	cout << year_2021[1][1].tasks.top().name;
+	StaticArray<StaticArray<day, 31>, 12> year;
+	map<int, map<int, string>> tasksReminders;
+	string input = "";
 
-	/*int month;
-	int date;
-	string buf;
+	int year_number = 2021;
+	int month = 1;
+	int dayNum = 1;
 
-	while (true)
+	ifstream fin;
+	fin.open("planner.txt");
+	if (!fin.good())
 	{
-		cout << "\nEnter a month (integer 1-12): ";
-		cin >> buf;
-		if (buf == "Q" || buf == "q") break;
-		month = atoi(buf.c_str());
+		cout << "Input file does not exist, you can interface with a blank planner.\nWhich year do you choose? ";
+		cin >> input; year_number = atoi(input.c_str());
+	}
+	else
+	{
+		string line;
+		string substring;
+		string taskName;
+		string taskDescription;
+		int taskPriority;
 
-		cout << "Enter a date (integer 1-31): ";
-		cin >> buf;
-		if (buf == "Q" || buf == "q") break;
-		date = atoi(buf.c_str());
+		getline(fin, line);
+		year_number = atoi(line.c_str());
 
-		cout << "The day of the week of the given date is: " << calculateDay(month, date);
-		cout << endl;
-	}*/
+		while (getline(fin, line)) {
+			stringstream ss(line);
+			string tStr;
+			int counter = 0;
+			while(getline(ss, tStr, '|')) {
+				if (counter == 0) //Day and month
+				{
+					stringstream(tStr) >> month >> dayNum;
+					tasksReminders[month][dayNum];
+				}
+				else 
+				{ //Tasks && reminders
+					stringstream sst(tStr);
+					string token;
+					if (!tStr.empty()) {
+						while (getline(sst, token, ',')) {
+							if (counter == 1) { //tasks
+								//cout << "Task: " << token << endl;
+								tasksReminders[month][dayNum].append(token);
+							}
+							else if (counter == 2) { //reminders
+								//cout << "Reminder: " << token << endl;
+								tasksReminders[month][dayNum].append(token);
+							}
+						}
+					}
+				}
+				counter++;
+			}
+		}
+	}
+
+	string month_choice;
+	do {
+		TitleCard(year_number);
+		month_choice = MonthSelect();
+		int month_c = -1;
+		if (toupper(month_choice[0]) != 'Q') {
+			string d;
+			int month = 0; stringstream(month_choice) >> month;
+			do {
+				TitleCard(MONTHS[month-1]+" "+to_string(DaysInMonth(month, year_number)));
+				d = SelectDay(CalculateDay(month, 1, year_number), DaysInMonth(month,year_number), atoi(d.c_str()));
+				/*cout << DAYOFWEEK[CalculateDay(month, 1, year_number)] << endl;
+				cin >> month;*/
+			} while (toupper(d[0]) != 'X');
+		}
+	} while (toupper(month_choice[0]) != 'Q');
+
+	fin.close();
 
 	cin.ignore(200, '\n');
 	cout << "Press ENTER or RETURN to continue...";
 	cin.get();
-
 }
 
-string calculateDay(int month, int date)
+template<typename T>
+void TitleCard(T output) 
 {
-	int dayOfTheYear = 0;
+	system("CLS");
+	cout.fill('='); cout << left << setw(46) << ' ' << endl; cout.fill(' ');
+	cout << setw(23) << right << output << endl;
+	cout.fill('='); cout << left << setw(46) << ' ' << endl; cout.fill(' ');
+}
 
-	switch (month)
+int CalculateDay(int m, int d, int y)
+{
+	int century = y / 100, year = y % 100;
+	int zellerMonth = (m + 10) % 12;
+	int day = d + ((13 * zellerMonth - 1) / 5) + year + (year / 4) + (century / 4) - (2 * century); //Zellers rule
+	if (day < 0)
 	{
-	case 1:
-		dayOfTheYear = date;
-		break;
-	case 2:
-		dayOfTheYear = 31 + date;
-		break;
-	case 3:
-		dayOfTheYear = 59 + date;
-		break;
-	case 4:
-		dayOfTheYear = 90 + date;
-		break;
-	case 5:
-		dayOfTheYear = 120 + date;
-		break;
-	case 6:
-		dayOfTheYear = 151 + date;
-		break;
-	case 7:
-		dayOfTheYear = 181 + date;
-		break;
-	case 8:
-		dayOfTheYear = 212 + date;
-		break;
-	case 9:
-		dayOfTheYear = 243 + date;
-		break;
-	case 10:
-		dayOfTheYear = 273 + date;
-		break;
-	case 11:
-		dayOfTheYear = 304 + date;
-		break;
-	case 12:
-		dayOfTheYear = 334 + date;
-		break;
-	default:
-		return "INVALID DATE";
-		break;
+		day *= -1;
+		day = (((day / 7) + 1) * 7) - day;
+	}
+	return day%7;
+}
+
+int DaysInMonth(int month_num, int year_num) 
+{
+	int days = ((month_num + (month_num >7)) % 2) - 
+		((2 - (((year_num % 4 == 0) && (year_num % 100 != 0)) 
+			|| (year_num % 400 == 0))) * (month_num == 2));
+	return 30 + days;
+}
+
+string MonthSelect() 
+{
+	for (int i = 0; i < 12; i++) {
+		(i % 3 == 0) && (i != 0) && cout << endl;
+		cout << right << "[" << setw(2) << i + 1 << "]" << setw(10) << left << MONTHS[i];
+	} cout << endl;
+	
+	string tok;
+	int monthNum = 0;
+	do {
+		cout << "Enter Month number: ";
+		getline(cin, tok);
+		monthNum = atoi(tok.c_str());
+	} while ((monthNum < 1 || monthNum > 12) && cout << "ERROR: Invalid month\n");
+	return tok;
+}
+
+string SelectDay(int start_day, int max_days, int selected_day = 1) //Default the day to the first
+{
+	const int week_length = 7, max_weeks = 5;
+	string day;
+	for (string day : DAYOFWEEK) {
+		cout << right << setw(6) << day.substr(0,3);
+	}
+	cout << endl;
+
+	int curr_day = 1;
+	for(int day_num = 1; day_num <= max_weeks * week_length; day_num++)
+	{
+		string output = " ";
+		char pad_1 = ' '; char pad_2 = pad_1;
+		if (curr_day <= max_days && day_num >= start_day) output = to_string(curr_day++);
+		if (curr_day-1 == selected_day && output != " ") { pad_1 = '['; pad_2 = ']'; }
+
+		cout << left << setw(3) << right << pad_1 << setw(2) << output << pad_2;
+		(day_num >0 && day_num % 7 == 0) && cout << endl;
 	}
 
-	int dayOfTheWeek = ((dayOfTheYear + 4) % 7) + 1;
-
-	switch (dayOfTheWeek)
-	{
-	case 1:
-		return "Sunday";
-		break;
-	case 2:
-		return "Monday";
-		break;
-	case 3:
-		return "Tuesday";
-		break;
-	case 4:
-		return "Wednesday";
-		break;
-	case 5:
-		return "Thursday";
-		break;
-	case 6:
-		return "Friday";
-		break;
-	case 7:
-		return "Saturday";
-		break;
-	default:
-		return "INVALID DATE";
-		break;
-	}
+	cout << "\nEnter day to search\nDay Number: ";
+	getline(cin, day);
+	return day;
 }
