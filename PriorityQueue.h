@@ -1,5 +1,5 @@
 // Programmers: Ziv Fuchs, Kamron Gonzales
-// Programmers’ IDs: 1796140, 1564995
+// Programmersï¿½ IDs: 1796140, 1564995
 
 #ifndef PRIORITYQUEUE_H
 #define PRIORITYQUEUE_H
@@ -24,6 +24,7 @@ public:
 	int size() const { return siz; }
 	bool empty() const { return siz == 0 ? true : false; }
 	void clear() { siz = 0; }
+	bool deleteValue(V value);
 };
 
 template<typename V>
@@ -126,6 +127,28 @@ void PriorityQueue<V>::pop() // avoid the hole
 		}
 	}
 	values[index] = values[siz];
+}
+
+template<typename V>
+bool PriorityQueue<V>::deleteValue(V value)
+{
+	bool valueFound = false;
+
+	vector<V> preservedValues;
+
+	for (int i = 0; i < siz; i++)
+	{
+		if (!(values[i] == value))
+			preservedValues.push_back(values[i]);
+		else valueFound = true;
+	}
+
+	clear();
+
+	for (int i = 0; i < preservedValues.size(); i++)
+		push(preservedValues[i]);
+
+	return valueFound;
 }
 
 #endif // PRIORITYQUEUE_H
