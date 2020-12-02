@@ -1,6 +1,39 @@
 // Programmers: Kamron Gonzales, Ziv Fuchs, Hayoun Lim, Brooke Morris, Ty Hewitt
 // Programmers’ IDs: 1564995, 1796140, 1533059, 1504892, 1779597
 
+// Program structure:
+// 1. include/using statements
+// 2. array and struct declarations
+// 3. function prototypes
+// 4. main()
+//	a) declarations
+//	b) input information from file
+//	c) display information and accept user input
+//	d) output information to file
+// 5. function implementations
+
+// To Do:
+// 1. Check input verification
+//		a) Year menu input: valid month (1-12), invalid month, Y to change year, X to quit, or other
+//			i) Change year confirmation: Y to proceed, N to return to year menu, or other
+//				1) year input (can't be invalid, strings converted to zero and negative numbers are BC)
+//		b) Month menu input: valid day (1-daysInMonth(year_number, month_number)), invalid day, X to return to year menu, or other
+//		c) Day menu input: T+ to add task, T- to remove task, R+ to add reminder, R- to remove reminder, X to quit, or other
+//			i) T+ input:
+//				1) description (can't be invalid)
+//				2) valid importance (1-10), invalid importance, other
+//			ii) T- input:
+//				1) description (can't be invalid)
+//				2) valid importance (1-10), invalid importance, other
+//			iii) R+ input:
+//				1) description (can't be invalid)
+//			iv) R- input:
+//				1) description (can't be invalid)
+
+//
+// 1 - include/using statements
+//
+
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <iostream>
@@ -15,195 +48,589 @@ using namespace std;
 #include "StaticArray.h"
 #include "PriorityQueue.h"
 
-const string DAYOFWEEK[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
-const string MONTHS[] = { "January", "February", "March", "April", "May", "June", "July", "August",
+//
+// 2 - array/struct declarations
+//
+
+const string DAY_NAMES[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+const string MONTH_NAMES[] = { "Invalid Month", "January", "February", "March", "April", "May", "June", "July", "August",
 		"September", "October", "November", "December"
-};
+}; // 1/Jan, 2/Feb, ... 12/Dec
 
-template<typename T>
-void TitleCard(T);
-int DaysInMonth(int, int);
-int CalculateDay(int, int, int);
-string MonthSelect();
-string SelectDay(int, int, int);
-
-struct task
+struct Task
 {
-	string name;
 	string description;
 	int importance;
-	bool operator<(task operand)
+	bool operator<(Task operand) // < operator is to support a PriorityQueue of Task objects
 	{
 		if (this->importance < operand.importance) return true;
 		return false;
 	}
+	bool operator==(Task operand) // == operator is to support a delete function for the PriorityQueue
+	{
+		if (this->description != operand.description) return false;
+		if (this->importance != operand.importance) return false;
+
+		return true;
+	}
 };
 
-struct day
+struct Day
 {
-	int month;
-	int date;
-	
-
+	PriorityQueue<string> Reminders;
+	PriorityQueue<Task> Tasks;
 };
+
+//
+// 3 - function prototypes
+//
+
+// note that year, month, and date are always passed in the following order: year_number, month_number, date_number
+
+int dayOfTheWeek(int year_number, int month_number, int date_number);
+int daysInMonth(int year_number, int month_number);
+
+void displayYear(int year_number);
+void displayMonth(int year_number, int month_number);
+void displayDay(StaticArray<StaticArray<Day, 31>, 12> year, int year_number, int month_number, int day_number);
+
+void updateYearAndClear(StaticArray<StaticArray<Day, 31>, 12>& year, int& year_number);
+
+//
+// 4 - main
+//
 
 int main()
 {
 	cout << "Programmers: Kamron Gonzales, Ziv Fuchs, Hayoun Lim, Brooke Morris, Ty Hewitt\n";
 	cout << "Programmers’ IDs: 1564995, 1796140, 1533059, 1504892, 1779597\n";
-	cout << "File: " << __FILE__ << endl;	
+	cout << "File: " << __FILE__ << endl;
 
-	StaticArray<StaticArray<day, 31>, 12> year;
-	map<int, map<int, string>> tasksReminders;
-	string input = "";
+	//
+	// 4a - declarations
+	//
 
+	// the year is modeled by a 2D array, 12 arrays of 31-day months. User will not have access to nonexistent days, like November 31
+	StaticArray<StaticArray<Day, 31>, 12> year;
+
+	// defaults to January 1, 2021
 	int year_number = 2021;
-	int month = 1;
-	int dayNum = 1;
+	int month_number = 1;
+	int date_number = 1;
 
+	char* token;
+	char buf[1000];
+	const char* const tab = "\t";
+
+	//
+	// 4b - input information from file
+	//
+
+	// if file does not exist, user can modify an empty planner, which will be stored in a file at the end of main
 	ifstream fin;
 	fin.open("planner.txt");
 	if (!fin.good())
 	{
-		cout << "Input file does not exist, you can interface with a blank planner.\nWhich year do you choose? ";
-		cin >> input; year_number = atoi(input.c_str());
+		cout << "I/O error. File can't find!\nThe planner is empty.\n";
 	}
+	// if the file does exist, then the first line is read into the year_number
 	else
 	{
+		fin >> year_number;
+	}
+
+	// parse the input file
+	while (fin.good())
+	{
 		string line;
-		string substring;
-		string taskName;
-		string taskDescription;
-		int taskPriority;
-
 		getline(fin, line);
-		year_number = atoi(line.c_str());
 
-		while (getline(fin, line)) {
-			stringstream ss(line);
-			string tStr;
-			int counter = 0;
-			while(getline(ss, tStr, '|')) {
-				if (counter == 0) //Day and month
+		char firstCharacter = line[0];
+
+		// depending on the first character of the line, different information will be read
+		switch (firstCharacter)
+		{
+		case 'm': // if the first character is m, then the next line is read into the month_number
+		{
+			fin >> month_number;
+			break;
+		}
+		case 'd': // if the first character is d, then the next line is read into the date_number
+		{
+			fin >> date_number;
+			break;
+		}
+		case 't': // if the first character is t, then the next line is read into the numberOfTasks
+		{
+			int numberOfTasks;
+			fin >> numberOfTasks;
+
+			vector<string> descriptions;
+			vector<int> importances;
+
+			string description;
+			int importance;
+
+			fin.ignore(200, '\n'); // double check
+
+			// for the next numberOfTasks lines, descriptions are read into the descriptions vector
+			for (int i = 0; i < numberOfTasks; i++)
+			{
+				getline(fin, description);
+				descriptions.push_back(description);
+			}
+			// for the next numberOfTasks lines, importances are read into the importances vector
+			for (int i = 0; i < numberOfTasks; i++)
+			{
+				fin >> importance;
+				importances.push_back(importance);
+			}
+			// numberOfTasks temporary tasks are created and pushed onto that day's vector of tasks
+			for (int i = 0; i < numberOfTasks; i++)
+			{
+				Task temp;
+				temp.description = descriptions.back();
+				descriptions.pop_back();
+				temp.importance = importances.back();
+				importances.pop_back();
+
+				year[month_number][date_number].Tasks.push(temp);
+			}
+			break;
+		}
+		case 'r': // if the first character is r, then the next line is read into the number of reminders
+		{
+			int numberOfReminders;
+			fin >> numberOfReminders;
+
+			fin.ignore(200, '\n'); // double check
+
+			// for the next numberOfReminders lines, the reminders are read into the reminder variable and then pushed onto that day's vector of reminders
+			for (int i = 0; i < numberOfReminders; i++)
+			{
+				string reminder;
+				getline(fin, reminder);
+				year[month_number][date_number].Reminders.push(reminder);
+			}
+			break;
+		}
+		default: // if the first character is none of the above, nothing happens
+			break;
+		}
+	}
+
+	fin.close(); // close the input file
+
+	//
+	// 4c - display information and accept user input
+	//
+
+	int display = 0;
+	bool errorMessage = false;
+	bool notFoundMessage = false;
+
+	while (true) // this loop processes input and display
+	{
+		bool quit = false;
+		string userInput;
+
+		switch (display)
+		{
+		case 0: // 0 for year (year # and 12 month menu)
+		{
+			displayYear(year_number); // call the displayYear function, showing the user the selected year and a 12 month menu
+
+			cout << endl << endl;
+
+			if (errorMessage) cout << "Unrecognized input.\n"; // if previous input was invalid then the user is informed that their input was uncrecognized
+			cout << "Select a month (integer 1-12), or \"Y\" to change year (\"X\" to quit): "; // prompt user for input
+
+			cin >> userInput;
+
+			if ((atoi(userInput.c_str()) >= 1) && (atoi(userInput.c_str()) <= 12)) // if the input converted to an integer is between 1-12
+			{
+				errorMessage = false; // do not output an error message next time
+				display = 1; // display month and ~30 day menu next time
+				month_number = atoi(userInput.c_str()); // updates month selection
+			}
+			else if (userInput == "X")
+			{
+				quit = true;
+			}
+			else if (userInput == "Y")
+			{
+				cout << "\nChanging the year will erase existing data.\nAre you sure you wish to proceed? (Y/N): ";
+				cin >> userInput;
+				if (userInput == "Y")
 				{
-					stringstream(tStr) >> month >> dayNum;
-					tasksReminders[month][dayNum];
+					errorMessage = false;
+					updateYearAndClear(year, year_number);
 				}
-				else 
-				{ //Tasks && reminders
-					stringstream sst(tStr);
-					string token;
-					if (!tStr.empty()) {
-						while (getline(sst, token, ',')) {
-							if (counter == 1) { //tasks
-								//cout << "Task: " << token << endl;
-								tasksReminders[month][dayNum].append(token);
-							}
-							else if (counter == 2) { //reminders
-								//cout << "Reminder: " << token << endl;
-								tasksReminders[month][dayNum].append(token);
-							}
-						}
-					}
+				else if (userInput == "N")
+				{
+					errorMessage = false;
 				}
-				counter++;
+				else
+				{
+					errorMessage = true;
+				}
+
+			}
+			else
+			{
+				errorMessage = true; // user input was invalid, output an error message next time
+			}
+
+			break;
+		}
+		case 1: // 1 for month (month name and ~30 day menu)
+		{
+			displayMonth(year_number, month_number); // call the displayMonth function, showing the user their selected month and a ~30 day menu
+
+			cout << endl;
+
+			if (errorMessage) cout << "Unrecognized input.\n"; // if previous input was invalid then the user is informed that their input was uncrecognized
+			cout << "Enter an integer 1-" << daysInMonth(year_number, month_number) << " to select a date (\"X\" to return to year menu): "; // prompt user for input
+
+			cin >> userInput;
+
+			if ((atoi(userInput.c_str()) >= 1) && (atoi(userInput.c_str()) <= daysInMonth(year_number, month_number))) // if the user input converted to an integer is a valid day
+			{
+				errorMessage = false; // do not output an error message next time
+				display = 2; // display month and ~30 day menu AND selected day next time
+				date_number = atoi(userInput.c_str()); // updates date selection
+			}
+			else if (userInput == "X")
+			{
+				errorMessage = false; // do not output an error message next time
+				display = 0; // display year and 12 month menu next time
+			}
+			else // user input was invalid
+			{
+				errorMessage = true; // user input was invalid, output an error message next time
+			}
+
+			break;
+		}
+		case 2: // 2 for day (month/~30 day menu + selected day and information)
+		{
+			displayDay(year, year_number, month_number, date_number);
+
+			cout << endl;
+
+			if (errorMessage) cout << "Unrecognized input.\n";
+			if (notFoundMessage) cout << "Value not found.\n";
+			cout << "Enter \"T+\" to add a task, \"T-\" to remove a task, \"R+\" to add a reminder, or \"R-\" to remove a reminder (X to return to month menu): ";
+
+			cin >> userInput;
+
+			if (userInput == "T+")
+			{
+				errorMessage = false;
+				notFoundMessage = false;
+
+				Task temp;
+
+				cin.ignore(200, '\n');
+				cout << "\nEnter the description for the task you would like to add: ";
+				getline(cin, temp.description);
+
+				cout << "Enter the importance for the task you would like to add (integer 1-10): ";
+				cin >> userInput; temp.importance = atoi(userInput.c_str());
+
+				if ((temp.importance < 1) || (temp.importance > 10))
+				{
+					errorMessage = true;
+				}
+				else
+				{
+					year[month_number][date_number].Tasks.push(temp);
+				}
+			}
+			else if (userInput == "T-")
+			{
+				errorMessage = false;
+				notFoundMessage = false;
+
+				Task temp;
+
+				cin.ignore(200, '\n');
+				cout << "\nEnter the description of the task you would like to delete: ";
+				getline(cin, temp.description);
+
+				cout << "Enter the importance of the task you would like to delete: ";
+				cin >> userInput; temp.importance = atoi(userInput.c_str());
+
+				if ((temp.importance < 1) || (temp.importance > 10)) // invalid task, do nothing and display error message next time
+				{
+					errorMessage = true;
+				}
+				else // valid 
+				{
+					bool successful = year[month_number][date_number].Tasks.deleteValue(temp);
+					if (!successful) notFoundMessage = true; // if delete function didn't do anything, next time let the user know the value wasn't found
+				}
+			}
+			else if (userInput == "R+")
+			{
+				errorMessage = false;
+				notFoundMessage = false;
+
+				cin.ignore(200, '\n');
+				cout << "\nEnter the description for the reminder you would like to add: ";
+				getline(cin, userInput);
+
+				year[month_number][date_number].Reminders.push(userInput);
+			}
+			else if (userInput == "R-")
+			{
+				errorMessage = false;
+				notFoundMessage = false;
+
+				cin.ignore(200, '\n');
+				cout << "\nEnter the description of the reminder you would like to delete: ";
+				getline(cin, userInput);
+
+				bool successful = year[month_number][date_number].Reminders.deleteValue(userInput);
+				if (!successful) notFoundMessage = true;
+
+			}
+			else if (userInput == "X")
+			{
+				errorMessage = false;
+				notFoundMessage = false;
+				display = 1; // return to month menu
+			}
+			else // user input did not match any commands
+			{
+				errorMessage = true;
+				notFoundMessage = false;
+			}
+
+			break;
+		}
+		default:
+		{
+
+			break;
+		}
+		}
+
+		if (quit) break; // if user input X to the year menu, then quit
+	}
+
+	//
+	// 4d - output information to file
+	//
+
+	// store information in file
+	ofstream fout;
+	fout.open("planner.txt");
+
+	// output year_number to the top of the output file (input and output are the same file)
+	fout << year_number << endl;
+
+	// for each month, output "m" then the number of the month on the next line
+	for (month_number = 1; month_number <= 12; month_number++)
+	{
+		fout << "m" << endl; // can also output name of the month for clarity
+		fout << month_number << endl;
+
+		// for each date, output "d" then the number of the date on the next line
+		for (date_number = 1; date_number <= daysInMonth(year_number, month_number); date_number++)
+		{
+			fout << "d" << endl;
+			fout << date_number << endl;
+
+			// output "t", signifying tasks, then the number of tasks, then all the descriptions for the tasks followed by all the importances, each on its own line
+			fout << "t" << endl;
+			fout << year[month_number][date_number].Tasks.size() << endl;
+
+			vector<string> descriptions;
+			vector<int> importances;
+
+			while (!year[month_number][date_number].Tasks.empty())
+			{
+				descriptions.push_back(year[month_number][date_number].Tasks.top().description);
+				importances.push_back(year[month_number][date_number].Tasks.top().importance);
+				year[month_number][date_number].Tasks.pop();
+			}
+
+			while (!descriptions.empty())
+			{
+				fout << descriptions.back() << endl;
+				descriptions.pop_back();
+			}
+
+			while (!importances.empty())
+			{
+				fout << importances.back() << endl;
+				importances.pop_back();
+			}
+
+			// output "r", signifying reminders, then the number of reminders, then all the reminders, each on its own line
+			fout << "r" << endl;
+			fout << year[month_number][date_number].Reminders.size() << endl;
+
+			while (!year[month_number][date_number].Reminders.empty())
+			{
+				fout << year[month_number][date_number].Reminders.top() << endl;
+
+				year[month_number][date_number].Reminders.pop();
 			}
 		}
 	}
 
-	string month_choice;
-	do {
-		TitleCard(year_number);
-		month_choice = MonthSelect();
-		int month_c = -1;
-		if (toupper(month_choice[0]) != 'Q') {
-			string d;
-			int month = 0; stringstream(month_choice) >> month;
-			do {
-				TitleCard(MONTHS[month-1]+" "+to_string(DaysInMonth(month, year_number)));
-				d = SelectDay(CalculateDay(month, 1, year_number), DaysInMonth(month,year_number), atoi(d.c_str()));
-				/*cout << DAYOFWEEK[CalculateDay(month, 1, year_number)] << endl;
-				cin >> month;*/
-			} while (toupper(d[0]) != 'X');
-		}
-	} while (toupper(month_choice[0]) != 'Q');
-
-	fin.close();
+	fout.close(); // close the output file
 
 	cin.ignore(200, '\n');
-	cout << "Press ENTER or RETURN to continue...";
+	cout << "\nInformation stored!";
 	cin.get();
 }
 
-template<typename T>
-void TitleCard(T output) 
+//
+// 5 - function implementations
+//
+
+int dayOfTheWeek(int year_number, int month_number, int date_number) // calculate day of the week given year, month, date
 {
-	system("CLS");
-	cout.fill('='); cout << left << setw(46) << ' ' << endl; cout.fill(' ');
-	cout << setw(23) << right << output << endl;
-	cout.fill('='); cout << left << setw(46) << ' ' << endl; cout.fill(' ');
+	static int t[] = { 0, 3, 2, 5, 0, 3,
+					   5, 1, 4, 6, 2, 4 };
+	year_number -= month_number < 3;
+	return (year_number + year_number / 4 - year_number / 100 +
+		year_number / 400 + t[month_number - 1] + date_number) % 7;
 }
 
-int CalculateDay(int m, int d, int y)
+int daysInMonth(int year_number, int month_number) // calculate number of days in a month given year, month
 {
-	int century = y / 100, year = y % 100;
-	int zellerMonth = (m + 10) % 12;
-	int day = d + ((13 * zellerMonth - 1) / 5) + year + (year / 4) + (century / 4) - (2 * century); //Zellers rule
-	if (day < 0)
-	{
-		day *= -1;
-		day = (((day / 7) + 1) * 7) - day;
-	}
-	return day%7;
-}
+	int days = ((month_number + (month_number > 7)) % 2) -
+		((2 - (((year_number % 4 == 0) && (year_number % 100 != 0))
+			|| (year_number % 400 == 0))) * (month_number == 2));
 
-int DaysInMonth(int month_num, int year_num) 
-{
-	int days = ((month_num + (month_num >7)) % 2) - 
-		((2 - (((year_num % 4 == 0) && (year_num % 100 != 0)) 
-			|| (year_num % 400 == 0))) * (month_num == 2));
 	return 30 + days;
 }
 
-string MonthSelect() 
+void displayYear(int year_number) // outputs year and 12 month menu
 {
-	for (int i = 0; i < 12; i++) {
-		(i % 3 == 0) && (i != 0) && cout << endl;
-		cout << right << "[" << setw(2) << i + 1 << "]" << setw(10) << left << MONTHS[i];
-	} cout << endl;
-	
-	string tok;
-	int monthNum = 0;
-	do {
-		cout << "Enter Month number: ";
-		getline(cin, tok);
-		monthNum = atoi(tok.c_str());
-	} while ((monthNum < 1 || monthNum > 12) && cout << "ERROR: Invalid month\n");
-	return tok;
+	system("CLS");
+
+	cout << "\n ================================================";
+	cout << "\n                       " << year_number;
+	cout << "\n ================================================";
+	cout << "\n    [01] January  [02] February [03] March";
+	cout << "\n    [04] April    [05] May      [06] June";
+	cout << "\n    [07] July     [08] August   [09] September";
+	cout << "\n    [10] October  [11] November [12] December";
 }
 
-string SelectDay(int start_day, int max_days, int selected_day = 1) //Default the day to the first
+void displayMonth(int year_number, int month_number) // outputs month and ~30 day menu
 {
-	const int week_length = 7, max_weeks = 5;
+	system("CLS");
+
+	cout << "\n ==========================================="; // 43 characters, add "=====" to have same length as year divider
+	cout << "\n   " << MONTH_NAMES[month_number] << " " << year_number;
+	cout << "\n ===========================================\n";
+
+	const int week_length = 7, max_weeks = 6;
 	string day;
-	for (string day : DAYOFWEEK) {
-		cout << right << setw(6) << day.substr(0,3);
+	for (string day : DAY_NAMES) {
+		cout << right << setw(6) << day.substr(0, 3);
 	}
 	cout << endl;
 
+	int max_days = daysInMonth(year_number, month_number);
+	int start_day = dayOfTheWeek(year_number, month_number, 1) + 1;
 	int curr_day = 1;
-	for(int day_num = 1; day_num <= max_weeks * week_length; day_num++)
+	for (int day_num = 1; day_num <= max_weeks * week_length; day_num++)
 	{
 		string output = " ";
 		char pad_1 = ' '; char pad_2 = pad_1;
-		if (curr_day <= max_days && day_num >= start_day) output = to_string(curr_day++);
-		if (curr_day-1 == selected_day && output != " ") { pad_1 = '['; pad_2 = ']'; }
+		if (curr_day <= max_days && day_num >= start_day)
+		{
+			if (curr_day < 10) output = "0" + to_string(curr_day++);
+			else output = to_string(curr_day++);
+		}
 
 		cout << left << setw(3) << right << pad_1 << setw(2) << output << pad_2;
-		(day_num >0 && day_num % 7 == 0) && cout << endl;
+		(day_num > 0 && day_num % 7 == 0) && cout << endl;
+	}
+}
+
+void displayDay(StaticArray<StaticArray<Day, 31>, 12> year, int year_number, int month_number, int date_number) // ouputs month and ~30 day menu, plus selected day and information for that day
+{
+	system("CLS");
+
+	cout << "\n ==========================================="; // 43 characters, add "=====" to have same length as year divider
+	cout << "\n   " << DAY_NAMES[dayOfTheWeek(year_number, month_number, date_number)] << ", " << MONTH_NAMES[month_number] << " " << date_number << " " << year_number;
+	cout << "\n ===========================================\n";
+
+	const int week_length = 7, max_weeks = 6;
+	string day;
+	for (string day : DAY_NAMES) {
+		cout << right << setw(6) << day.substr(0, 3);
+	}
+	cout << endl;
+
+	int max_days = daysInMonth(year_number, month_number);
+	int start_day = dayOfTheWeek(year_number, month_number, 1) + 1;
+	int curr_day = 1;
+	for (int day_num = 1; day_num <= max_weeks * week_length; day_num++)
+	{
+		string output = " ";
+		char pad_1 = ' '; char pad_2 = pad_1;
+		if (curr_day <= max_days && day_num >= start_day)
+		{
+			if (curr_day < 10) output = "0" + to_string(curr_day++);
+			else output = to_string(curr_day++);
+		}
+		if (curr_day - 1 == date_number && output != " ") { pad_1 = '['; pad_2 = ']'; }
+
+		cout << left << setw(3) << right << pad_1 << setw(2) << output << pad_2;
+		(day_num > 0 && day_num % 7 == 0) && cout << endl;
 	}
 
-	cout << "\nEnter day to search\nDay Number: ";
-	getline(cin, day);
-	return day;
+	cout << "\n=============";
+	cout << "\n  Reminders";
+	cout << "\n=============\n";
+
+	PriorityQueue<string> RemindersCopy = year[month_number][date_number].Reminders;
+
+	if (RemindersCopy.size() == 0) cout << "  No reminders.\n";
+
+	for (int reminderCounter = 0; reminderCounter < year[month_number][date_number].Reminders.size(); reminderCounter++)
+	{
+		cout << "  " << reminderCounter + 1 << ". " << RemindersCopy.top() << endl;
+		RemindersCopy.pop();
+	}
+
+	cout << "\n\n=============";
+	cout << "\n    Tasks";
+	cout << "\n=============\n";
+
+	PriorityQueue<Task> TasksCopy = year[month_number][date_number].Tasks;
+
+	if (TasksCopy.size() == 0) cout << "  No tasks.\n";
+
+	for (int taskCounter = 0; taskCounter < year[month_number][date_number].Tasks.size(); taskCounter++)
+	{
+		cout << "  " << TasksCopy.top().importance << " | " << TasksCopy.top().description << endl;
+		TasksCopy.pop();
+	}
+}
+
+void updateYearAndClear(StaticArray<StaticArray<Day, 31>, 12>& year, int& year_number) // clears the entire planner and updates the year
+{
+	for (int month = 1; month <= 12; month++)
+	{
+		for (int day = 1; day <= daysInMonth(year_number, month); day++)
+		{
+			year[month][day].Tasks.clear();
+			year[month][day].Reminders.clear();
+		}
+	}
+
+	string yearInput;
+
+	cout << "\nSpecify a year: ";
+	cin >> yearInput; year_number = atoi(yearInput.c_str());
 }
